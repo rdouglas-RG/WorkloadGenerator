@@ -90,7 +90,7 @@ sliding-window size (required when using `-Duration` without `-Count`).
 When `-ScriptPath` is a **folder**, each slot picks a matching script at random on every
 launch — ideal for mixing the AdventureWorks queries.
 
-### Examples
+### Examples — SQL Server
 
 Run the whole query folder for 10 minutes, 5 at a time, against the `local-windows` profile:
 
@@ -112,6 +112,46 @@ Stop at whichever limit comes first (up to 100 runs **or** 5 minutes):
 .\Run-Parallel.ps1 -Language sqlserver -ScriptPath ".\AdventureWorks_Queries" `
     -Count 100 -Duration 5 -MaxConcurrent 10 -SqlProfile prod
 ```
+
+> `-SqlProfile` (and `-ConfigPath`) only apply to `-Language sqlserver`. PowerShell and
+> Python runs ignore them — they take no connection profile.
+
+### Examples — PowerShell
+
+Run a single PowerShell script 20 times, 5 instances at a time:
+
+```powershell
+.\Run-Parallel.ps1 -Language powershell -ScriptPath "C:\Scripts\Do-Work.ps1" `
+    -Count 20 -MaxConcurrent 5
+```
+
+Randomly pick `.ps1` scripts from a folder and run them for 10 minutes, 4 at a time:
+
+```powershell
+.\Run-Parallel.ps1 -Language powershell -ScriptPath "C:\Scripts" `
+    -Duration 10 -MaxConcurrent 4
+```
+
+### Examples — Python
+
+Run a single Python script 50 times, 8 concurrent, with a half-second stagger:
+
+```powershell
+.\Run-Parallel.ps1 -Language python -ScriptPath "C:\Queries\run_queries.py" `
+    -Count 50 -MaxConcurrent 8 -Delay 0.5
+```
+
+Randomly pick `.py` scripts from a folder and run for up to 100 executions or 5 minutes,
+whichever comes first, 10 at a time:
+
+```powershell
+.\Run-Parallel.ps1 -Language python -ScriptPath "C:\Queries" `
+    -Count 100 -Duration 5 -MaxConcurrent 10
+```
+
+> Python runs require `python` to be on your `PATH`. Each instance is launched as
+> `python <script>`, so the script is responsible for its own arguments, environment, and any
+> database connection it needs.
 
 ## Reducing log growth during enlargement
 
