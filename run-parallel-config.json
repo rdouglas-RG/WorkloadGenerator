@@ -1,0 +1,45 @@
+{
+  "profiles": {
+    "local-windows": {
+      "server": "localhost\\SQL2022",
+      "database": "AdventureWorks",
+      "port": 1433,
+      "auth": "windows",
+      "trustServerCertificate": true
+    },
+    "local-sql": {
+      "server": "localhost\\SQLEXPRESS",
+      "database": "MyDb",
+      "port": 1433,
+      "auth": "sql",
+      "username": "sa",
+      "password": "secret",
+      "trustServerCertificate": true
+    },
+    "dev": {
+      "server": "dev-sql-01",
+      "port": 1433,
+      "database": "MyDb",
+      "auth": "windows",
+      "trustServerCertificate": true
+    },
+    "staging": {
+      "server": "sqlload",
+      "port": 1433,
+      "database": "AdventureWorks",
+      "auth": "sql",
+      "username": "sa",
+      "password": "secret",
+      "trustServerCertificate": true
+    },
+    "prod": {
+      "server": "prod-sql-01",
+      "port": 1433,
+      "database": "MyDb",
+      "auth": "sql",
+      "username": "app_user",
+      "password": "secret",
+      "trustServerCertificate": true
+    }
+  }
+}
