@@ -487,6 +487,6 @@ $summaryParts = @("$launched launched", "$completedCount completed", "$failedCou
 if ($killedCount -gt 0) { $summaryParts += "$killedCount stopped" }
 
 $summaryColour = if ($failedCount -gt 0) { "Red" } else { "Cyan" }
-Write-Host "`nFinished in $elapsedStr — $($summaryParts -join ', ')." -ForegroundColor $summaryColour
+Write-Host "`nFinished in $elapsedStr - $($summaryParts -join ', ')." -ForegroundColor $summaryColour
 
 if ($failedCount -gt 0) { exit 1 }
