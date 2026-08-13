@@ -109,7 +109,7 @@ Cannot connect to SQL Server. Aborting before any load was generated.
   Auth:     Windows auth as 'CONTOSO\rdouglas'
   Method:   Invoke-Sqlcmd
 
-  Cause:    Connected to the server, but the database could not be opened — it may not
+  Cause:    Connected to the server, but the database could not be opened - it may not
             exist, be offline, or the login may have no access to it.
   Fix:      Check the 'database' value in profile 'staging'. Confirm it is ONLINE and that
             the login is mapped to a user in it.
@@ -120,6 +120,17 @@ Cannot connect to SQL Server. Aborting before any load was generated.
 
 The check waits up to 15 seconds for the connection (`$sqlConnectTimeoutSeconds` in the script)
 and there is no flag to skip it — a run that cannot connect has nothing useful to do.
+
+> `trustServerCertificate` only bites on the `Invoke-Sqlcmd` path, which encrypts by default and
+> so validates the server certificate. The `sqlcmd` fallback does not encrypt by default and will
+> connect regardless. The pre-flight check uses whichever method the jobs will use, so it always
+> reflects real behaviour — but the same profile can legitimately pass under `sqlcmd` and fail
+> under `Invoke-Sqlcmd`.
+
+`Run-Parallel.ps1` is deliberately kept ASCII-only. Windows PowerShell 5.1 reads `.ps1` files as
+Windows-1252 unless they carry a BOM, and a UTF-8 em dash decodes into a curly quote there, which
+the parser treats as a string delimiter — breaking the whole script. Use `-` rather than `—` in
+script strings and comments.
 
 ## Running
 

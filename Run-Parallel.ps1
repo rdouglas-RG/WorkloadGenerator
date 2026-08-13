@@ -10,7 +10,7 @@
     at random from all matching files on every launch.
 
     Stops when -Count executions have been launched, when -Duration minutes have elapsed,
-    or both — whichever comes first. At least one must be provided.
+    or both - whichever comes first. At least one must be provided.
 
     When -Count is reached, any in-flight jobs are allowed to complete.
     When -Duration is reached, in-flight jobs are stopped immediately.
@@ -66,7 +66,7 @@
 .EXAMPLE
     .\Run-Parallel.ps1 -Language sqlserver -ScriptPath "C:\Queries" -Count 100 -Duration 5 -MaxConcurrent 10 -SqlProfile prod
 
-    Runs up to 100 scripts for up to 5 minutes — stops at whichever limit is hit first.
+    Runs up to 100 scripts for up to 5 minutes - stops at whichever limit is hit first.
 
 .NOTES
     SQL Server support requires either the SqlServer PowerShell module or sqlcmd.
@@ -80,7 +80,7 @@
     If your execution policy blocks unsigned scripts, run:
       Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
 
-    Keep your config file out of source control — add it to .gitignore.
+    Keep your config file out of source control - add it to .gitignore.
 #>
 
 # The password passed to SQL jobs is already plain text in the config file.
@@ -179,7 +179,7 @@ if ($Language -eq "python") {
     }
 }
 
-# Resolve MaxConcurrent — required when duration-only, defaults to Count otherwise
+# Resolve MaxConcurrent - required when duration-only, defaults to Count otherwise
 if (-not $PSBoundParameters.ContainsKey('MaxConcurrent')) {
     if ($hasCount) {
         $MaxConcurrent = $Count
@@ -230,11 +230,11 @@ function Get-SqlConnectionDiagnosis {
     if ($null -ne $Number) {
         switch ([int]$Number) {
             18456 {
-                $cause = "SQL Server rejected the login — wrong username or password."
+                $cause = "SQL Server rejected the login - wrong username or password."
                 $hint  = "Check 'username' and 'password' in profile '$SqlProfile'. Confirm the login exists on the server and is not disabled or locked out."
             }
             18452 {
-                $cause = "The login is not associated with a trusted connection — the server is likely set to Windows-authentication-only."
+                $cause = "The login is not associated with a trusted connection - the server is likely set to Windows-authentication-only."
                 $hint  = "Either set 'auth' to 'windows' in profile '$SqlProfile', or enable Mixed Mode authentication on the server (and restart it)."
             }
             18470 {
@@ -242,7 +242,7 @@ function Get-SqlConnectionDiagnosis {
                 $hint  = "Re-enable it: ALTER LOGIN [$($conn.username)] ENABLE;"
             }
             4060 {
-                $cause = "Connected to the server, but the database could not be opened — it may not exist, be offline, or the login may have no access to it."
+                $cause = "Connected to the server, but the database could not be opened - it may not exist, be offline, or the login may have no access to it."
                 $hint  = "Check the 'database' value in profile '$SqlProfile'. Confirm it is ONLINE and that the login is mapped to a user in it."
             }
             911 {
@@ -254,7 +254,7 @@ function Get-SqlConnectionDiagnosis {
                 $hint  = "Set an explicit, valid 'database' in profile '$SqlProfile', or fix the login's default database."
             }
             { $_ -in 40615, 40532 } {
-                $cause = "Azure SQL refused the connection at the firewall — your client IP is not allowed."
+                $cause = "Azure SQL refused the connection at the firewall - your client IP is not allowed."
                 $hint  = "Add your current IP to the server's firewall rules in the Azure portal."
             }
             53 {
@@ -266,7 +266,7 @@ function Get-SqlConnectionDiagnosis {
                 $hint  = "Verify the instance name in 'server'. Named instances need the SQL Server Browser service running, and UDP 1434 open on the host."
             }
             { $_ -in 40, 10060, 10061 } {
-                $cause = "The host was reached, but nothing accepted the connection — the SQL Server service for that instance is most likely stopped, or the port/instance name is wrong."
+                $cause = "The host was reached, but nothing accepted the connection - the SQL Server service for that instance is most likely stopped, or the port/instance name is wrong."
                 $hint  = "Check the service is running (Get-Service 'MSSQL*'), that TCP/IP is enabled for the instance, and that inbound TCP is allowed through the firewall."
             }
             233 {
@@ -283,7 +283,7 @@ function Get-SqlConnectionDiagnosis {
     if (-not $cause) {
         # Order matters: these run top-down and stop at the first match, so the most specific
         # patterns come first. A database-access failure also emits a generic "Login failed for
-        # user" line, and sqlcmd prints both — checking the database cases first avoids
+        # user" line, and sqlcmd prints both - checking the database cases first avoids
         # misreporting a missing database as bad credentials.
         switch -Regex ($Message) {
             'Cannot open user default database' {
@@ -292,7 +292,7 @@ function Get-SqlConnectionDiagnosis {
                 break
             }
             'Cannot open database' {
-                $cause = "The server was reached and the login was accepted, but the database could not be opened — it may not exist, be offline, or the login may have no access to it."
+                $cause = "The server was reached and the login was accepted, but the database could not be opened - it may not exist, be offline, or the login may have no access to it."
                 $hint  = "Check the 'database' value in profile '$SqlProfile' and that the login is mapped to a user in it."
                 break
             }
@@ -307,7 +307,7 @@ function Get-SqlConnectionDiagnosis {
                 break
             }
             'Login failed for user' {
-                $cause = "SQL Server rejected the login — wrong username or password."
+                $cause = "SQL Server rejected the login - wrong username or password."
                 $hint  = "Check 'username' and 'password' in profile '$SqlProfile'. Confirm the login exists on the server and is not disabled or locked out."
                 break
             }
@@ -322,7 +322,7 @@ function Get-SqlConnectionDiagnosis {
                 break
             }
             'network-related or instance-specific error|server was not found or was not accessible|Named Pipes Provider' {
-                $cause = "The server could not be reached — wrong name, not running, or blocked by a firewall."
+                $cause = "The server could not be reached - wrong name, not running, or blocked by a firewall."
                 $hint  = "Verify 'server' in profile '$SqlProfile', that the SQL Server service is running, and that TCP/IP is enabled for the instance."
                 break
             }
@@ -435,7 +435,7 @@ function Test-SqlConnection {
         $text = "sqlcmd exited with code $LASTEXITCODE but produced no output."
     }
 
-    # sqlcmd reports errors as "Msg 18456, Level 14, State 1" — recover the number if present.
+    # sqlcmd reports errors as "Msg 18456, Level 14, State 1" - recover the number if present.
     $number = $null
     if ($text -match 'Msg\s+(\d+)') { $number = [int]$Matches[1] }
 
@@ -527,7 +527,7 @@ No SQL Server execution method found. Install one of the following:
         # A named instance plus an explicit port is contradictory: the port wins and the
         # instance name is ignored, so you can silently reach a different instance.
         if ($conn.server -match '\\') {
-            Write-Warning "Profile '$SqlProfile' sets both a named instance ('$($conn.server.Trim())') and a port ($portNum). The port takes precedence and the instance name is ignored — remove one of them to be sure which instance you reach."
+            Write-Warning "Profile '$SqlProfile' sets both a named instance ('$($conn.server.Trim())') and a port ($portNum). The port takes precedence and the instance name is ignored - remove one of them to be sure which instance you reach."
         }
     } else {
         $serverString = $conn.server.Trim()
@@ -543,25 +543,30 @@ No SQL Server execution method found. Install one of the following:
                 $sqlScriptBlock = {
                     param($path, $server, $database, $username, $password)
                     Import-Module SqlServer
-                    Invoke-Sqlcmd -ServerInstance $server -Database $database -Username $username -Password $password -InputFile $path -TrustServerCertificate
+                    Invoke-Sqlcmd -ServerInstance $server -Database $database -Username $username -Password $password -InputFile $path -TrustServerCertificate -ErrorAction Stop
                 }
             } else {
                 $sqlScriptBlock = {
                     param($path, $server, $database, $username, $password)
                     Import-Module SqlServer
-                    Invoke-Sqlcmd -ServerInstance $server -Database $database -Username $username -Password $password -InputFile $path
+                    Invoke-Sqlcmd -ServerInstance $server -Database $database -Username $username -Password $password -InputFile $path -ErrorAction Stop
                 }
             }
         } else {
             if ($trustCertificate) {
                 $sqlScriptBlock = {
                     param($path, $server, $database, $username, $password)
-                    sqlcmd -S $server -d $database -U $username -P $password -i "$path" -C
+                    # -b makes sqlcmd return a non-zero exit code on a T-SQL error; without the
+                    # throw, a native exit code leaves the job State as Completed and the
+                    # failure goes unreported.
+                    sqlcmd -S $server -d $database -U $username -P $password -i "$path" -C -b
+                    if ($LASTEXITCODE -ne 0) { throw "sqlcmd exited with code $LASTEXITCODE" }
                 }
             } else {
                 $sqlScriptBlock = {
                     param($path, $server, $database, $username, $password)
-                    sqlcmd -S $server -d $database -U $username -P $password -i "$path"
+                    sqlcmd -S $server -d $database -U $username -P $password -i "$path" -b
+                    if ($LASTEXITCODE -ne 0) { throw "sqlcmd exited with code $LASTEXITCODE" }
                 }
             }
         }
@@ -571,25 +576,27 @@ No SQL Server execution method found. Install one of the following:
                 $sqlScriptBlock = {
                     param($path, $server, $database)
                     Import-Module SqlServer
-                    Invoke-Sqlcmd -ServerInstance $server -Database $database -InputFile $path -TrustServerCertificate
+                    Invoke-Sqlcmd -ServerInstance $server -Database $database -InputFile $path -TrustServerCertificate -ErrorAction Stop
                 }
             } else {
                 $sqlScriptBlock = {
                     param($path, $server, $database)
                     Import-Module SqlServer
-                    Invoke-Sqlcmd -ServerInstance $server -Database $database -InputFile $path
+                    Invoke-Sqlcmd -ServerInstance $server -Database $database -InputFile $path -ErrorAction Stop
                 }
             }
         } else {
             if ($trustCertificate) {
                 $sqlScriptBlock = {
                     param($path, $server, $database)
-                    sqlcmd -S $server -d $database -E -i "$path" -C
+                    sqlcmd -S $server -d $database -E -i "$path" -C -b
+                    if ($LASTEXITCODE -ne 0) { throw "sqlcmd exited with code $LASTEXITCODE" }
                 }
             } else {
                 $sqlScriptBlock = {
                     param($path, $server, $database)
-                    sqlcmd -S $server -d $database -E -i "$path"
+                    sqlcmd -S $server -d $database -E -i "$path" -b
+                    if ($LASTEXITCODE -ne 0) { throw "sqlcmd exited with code $LASTEXITCODE" }
                 }
             }
         }
@@ -684,13 +691,17 @@ function Start-NextJob {
 function Receive-CompletedJobs {
     $done = @($activeJobs | Where-Object { $_.State -ne 'Running' })
     foreach ($job in $done) {
-        if ($job.State -eq "Failed") {
-            $output = Receive-Job -Job $job 2>&1
+        # State alone is not enough: a non-terminating error inside the job leaves State as
+        # Completed while still recording the error, so check the error stream too. Read it
+        # before Receive-Job drains the job.
+        $hadErrors = @($job.ChildJobs | Where-Object { $_.Error.Count -gt 0 }).Count -gt 0
+        $output    = Receive-Job -Job $job 2>&1
+
+        if ($job.State -eq "Failed" -or $hadErrors) {
             Write-Host "`n--- Job $($job.Id) [FAILED] ---" -ForegroundColor Red
             if ($output) { Write-Host $output }
             $script:failedCount++
         } else {
-            $null = Receive-Job -Job $job 2>&1
             $script:completedCount++
         }
         Remove-Job -Job $job
@@ -727,7 +738,7 @@ $activeJobs     = [System.Collections.Generic.List[object]]::new()
 
 while ($true) {
 
-    # Hard cutoff — duration check at the top of every iteration
+    # Hard cutoff - duration check at the top of every iteration
     if (Test-DurationExceeded) { break }
 
     # Fill the pool
@@ -742,10 +753,10 @@ while ($true) {
         }
     }
 
-    # Re-check duration after filling — a Delay sleep may have pushed us over
+    # Re-check duration after filling - a Delay sleep may have pushed us over
     if (Test-DurationExceeded) { break }
 
-    # Count limit reached — wait for in-flight jobs to finish naturally
+    # Count limit reached - wait for in-flight jobs to finish naturally
     if ($hasCount -and $launched -ge $Count) {
         if ($activeJobs.Count -gt 0) {
             Write-Host "`nAll $Count executions launched. Waiting for $($activeJobs.Count) in-flight job(s)..." -ForegroundColor Yellow
@@ -755,14 +766,14 @@ while ($true) {
         break
     }
 
-    # Wait for a slot to open — poll every 5 seconds so duration is checked regularly
+    # Wait for a slot to open - poll every 5 seconds so duration is checked regularly
     if ($activeJobs.Count -gt 0) {
         $null = Wait-Job -Job $activeJobs -Any -Timeout 5
         Receive-CompletedJobs
     }
 }
 
-# Duration expired — stop in-flight jobs immediately
+# Duration expired - stop in-flight jobs immediately
 if (Test-DurationExceeded -and $activeJobs.Count -gt 0) {
     $killedCount = $activeJobs.Count
     Write-Host "`nDuration limit reached. Stopping $killedCount in-flight job(s)..." -ForegroundColor Yellow
