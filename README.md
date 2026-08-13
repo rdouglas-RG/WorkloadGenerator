@@ -40,15 +40,22 @@ AdventureWorks. Two steps:
 
 ## Configuration
 
-Connection details live in [run-parallel-config.json](run-parallel-config.json) as named
-**profiles**. Edit it for your environment. Each profile supports:
+Connection details live in `run-parallel-config.json` as named **profiles**. That file is
+**gitignored** because it holds plain-text passwords; the repo ships a placeholder template
+instead. Copy it and edit your copy:
+
+```powershell
+Copy-Item run-parallel-config.example.json run-parallel-config.json
+```
+
+Each profile supports:
 
 | Field                   | Required        | Notes                                                       |
 | ----------------------- | --------------- | ----------------------------------------------------------- |
 | `server`                | yes             | Host or `host\instance` (e.g. `localhost\SQL2022`).         |
 | `database`              | yes             | Target database, e.g. `AdventureWorks`.                     |
 | `auth`                  | yes             | `windows` or `sql`.                                         |
-| `port`                  | no              | Defaults to the instance default if omitted.                |
+| `port`                  | no              | Omit when `server` names an instance — see note below.       |
 | `username` / `password` | when `auth=sql` | SQL login credentials.                                      |
 | `trustServerCertificate`| no              | `true` to skip TLS cert validation (common for local/dev).  |
 
@@ -68,11 +75,51 @@ Example profile for a local machine using Windows authentication:
 }
 ```
 
-> **Keep this file out of source control** — it can contain plain-text passwords. Add
-> `run-parallel-config.json` to your `.gitignore`.
+> **Don't set both `port` and a named instance.** The script joins them as
+> `server\instance,port`, and when both are present the port wins and the instance name is
+> silently ignored — you may connect to a different instance than the profile appears to name.
+> Use `host\instance` **or** `host` + `port`, not both.
+
+> **Never commit your real `run-parallel-config.json`.** It is covered by [.gitignore](.gitignore),
+> along with any other `*-config.json` you point at via `-ConfigPath`. Only
+> [run-parallel-config.example.json](run-parallel-config.example.json) is tracked, and it
+> contains `CHANGEME` placeholders rather than usable credentials.
 
 By default the script looks for `run-parallel-config.json` next to `Run-Parallel.ps1`; point
 elsewhere with `-ConfigPath`.
+
+### Connection validation
+
+Before launching any load, the script opens a single connection and runs `SELECT 1` using the
+same execution method and credentials the jobs will use. **If that fails, nothing is launched
+and the script exits with code `1`.** This turns a bad profile into one actionable error rather
+than one failed job per execution.
+
+The error names the profile, server, database, auth mode and method, then explains the cause in
+plain English and suggests a fix — for example a wrong password, a database that does not exist,
+a stopped instance, an unresolvable host, or an untrusted TLS certificate. The raw message from
+SQL Server is always included underneath. For instance:
+
+```
+Cannot connect to SQL Server. Aborting before any load was generated.
+
+  Profile:  staging (from C:\Projects\WorkloadGenerator\run-parallel-config.json)
+  Server:   localhost\SQL2025
+  Database: NoSuchDatabase
+  Auth:     Windows auth as 'CONTOSO\rdouglas'
+  Method:   Invoke-Sqlcmd
+
+  Cause:    Connected to the server, but the database could not be opened — it may not
+            exist, be offline, or the login may have no access to it.
+  Fix:      Check the 'database' value in profile 'staging'. Confirm it is ONLINE and that
+            the login is mapped to a user in it.
+
+  Reported by Invoke-Sqlcmd:
+    Cannot open database "NoSuchDatabase" requested by the login. The login failed.
+```
+
+The check waits up to 15 seconds for the connection (`$sqlConnectTimeoutSeconds` in the script)
+and there is no flag to skip it — a run that cannot connect has nothing useful to do.
 
 ## Running
 

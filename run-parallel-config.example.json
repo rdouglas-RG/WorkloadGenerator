@@ -1,0 +1,34 @@
+{
+  "profiles": {
+    "local-windows": {
+      "server": "localhost\\SQL2022",
+      "database": "AdventureWorks",
+      "auth": "windows",
+      "trustServerCertificate": true
+    },
+    "local-sql": {
+      "server": "localhost\\SQLEXPRESS",
+      "database": "AdventureWorks",
+      "auth": "sql",
+      "username": "CHANGEME",
+      "password": "CHANGEME",
+      "trustServerCertificate": true
+    },
+    "dev": {
+      "server": "dev-sql-01",
+      "port": 1433,
+      "database": "AdventureWorks",
+      "auth": "windows",
+      "trustServerCertificate": true
+    },
+    "prod": {
+      "server": "prod-sql-01",
+      "port": 1433,
+      "database": "AdventureWorks",
+      "auth": "sql",
+      "username": "CHANGEME",
+      "password": "CHANGEME",
+      "trustServerCertificate": false
+    }
+  }
+}

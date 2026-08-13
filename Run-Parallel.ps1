@@ -206,6 +206,249 @@ if ($Language -ne "sqlserver") {
 }
 
 # ==============================
+# SQL connection pre-flight
+# ==============================
+
+# How long to wait for the pre-flight connection before giving up.
+$sqlConnectTimeoutSeconds = 15
+
+function Get-SqlConnectionDiagnosis {
+    <#
+        Translates a raw SQL Server failure (error number and/or message text) into a
+        plain-English cause and a concrete fix. Invoke-Sqlcmd gives us a structured error
+        number; sqlcmd only gives text, so both are matched. Returns Cause = $null when
+        nothing matches, letting the caller fall back to the raw message alone.
+    #>
+    param(
+        [string]$Message,
+        $Number
+    )
+
+    $cause = $null
+    $hint  = $null
+
+    if ($null -ne $Number) {
+        switch ([int]$Number) {
+            18456 {
+                $cause = "SQL Server rejected the login — wrong username or password."
+                $hint  = "Check 'username' and 'password' in profile '$SqlProfile'. Confirm the login exists on the server and is not disabled or locked out."
+            }
+            18452 {
+                $cause = "The login is not associated with a trusted connection — the server is likely set to Windows-authentication-only."
+                $hint  = "Either set 'auth' to 'windows' in profile '$SqlProfile', or enable Mixed Mode authentication on the server (and restart it)."
+            }
+            18470 {
+                $cause = "The login exists but is disabled."
+                $hint  = "Re-enable it: ALTER LOGIN [$($conn.username)] ENABLE;"
+            }
+            4060 {
+                $cause = "Connected to the server, but the database could not be opened — it may not exist, be offline, or the login may have no access to it."
+                $hint  = "Check the 'database' value in profile '$SqlProfile'. Confirm it is ONLINE and that the login is mapped to a user in it."
+            }
+            911 {
+                $cause = "The requested database does not exist on this server."
+                $hint  = "Check the 'database' value in profile '$SqlProfile' for typos, and that you are pointed at the right server."
+            }
+            4064 {
+                $cause = "The login's default database is unavailable."
+                $hint  = "Set an explicit, valid 'database' in profile '$SqlProfile', or fix the login's default database."
+            }
+            { $_ -in 40615, 40532 } {
+                $cause = "Azure SQL refused the connection at the firewall — your client IP is not allowed."
+                $hint  = "Add your current IP to the server's firewall rules in the Azure portal."
+            }
+            53 {
+                $cause = "The server name could not be resolved or reached over the network."
+                $hint  = "Check the 'server' value in profile '$SqlProfile'. Verify the host resolves (ping it), is powered on, and that TCP/IP is enabled in SQL Server Configuration Manager."
+            }
+            26 {
+                $cause = "The named instance could not be located."
+                $hint  = "Verify the instance name in 'server'. Named instances need the SQL Server Browser service running, and UDP 1434 open on the host."
+            }
+            { $_ -in 40, 10060, 10061 } {
+                $cause = "The host was reached, but nothing accepted the connection — the SQL Server service for that instance is most likely stopped, or the port/instance name is wrong."
+                $hint  = "Check the service is running (Get-Service 'MSSQL*'), that TCP/IP is enabled for the instance, and that inbound TCP is allowed through the firewall."
+            }
+            233 {
+                $cause = "The server closed the connection immediately (no process on the other end of the pipe)."
+                $hint  = "Often means the instance is not accepting TCP connections. Enable TCP/IP for the instance and restart the SQL Server service."
+            }
+            -2 {
+                $cause = "The connection attempt timed out after $sqlConnectTimeoutSeconds seconds."
+                $hint  = "The host may be unreachable, heavily loaded, or silently dropping packets at a firewall. Verify the server name and port."
+            }
+        }
+    }
+
+    if (-not $cause) {
+        # Order matters: these run top-down and stop at the first match, so the most specific
+        # patterns come first. A database-access failure also emits a generic "Login failed for
+        # user" line, and sqlcmd prints both — checking the database cases first avoids
+        # misreporting a missing database as bad credentials.
+        switch -Regex ($Message) {
+            'Cannot open user default database' {
+                $cause = "The login's default database is unavailable."
+                $hint  = "Set an explicit, valid 'database' in profile '$SqlProfile'."
+                break
+            }
+            'Cannot open database' {
+                $cause = "The server was reached and the login was accepted, but the database could not be opened — it may not exist, be offline, or the login may have no access to it."
+                $hint  = "Check the 'database' value in profile '$SqlProfile' and that the login is mapped to a user in it."
+                break
+            }
+            'not associated with a trusted SQL Server connection' {
+                $cause = "The server is set to Windows-authentication-only, so the SQL login was refused."
+                $hint  = "Set 'auth' to 'windows' in profile '$SqlProfile', or enable Mixed Mode authentication on the server."
+                break
+            }
+            'certificate chain was issued by an authority that is not trusted|The target principal name is incorrect|SSL Provider|encryption.*certificate' {
+                $cause = "The TLS handshake failed because the server's certificate is not trusted. Recent SqlServer module versions encrypt by default, so self-signed certificates are rejected unless you opt in."
+                $hint  = "For a local or dev server, set 'trustServerCertificate' to true in profile '$SqlProfile'. For production, install a certificate the client trusts instead."
+                break
+            }
+            'Login failed for user' {
+                $cause = "SQL Server rejected the login — wrong username or password."
+                $hint  = "Check 'username' and 'password' in profile '$SqlProfile'. Confirm the login exists on the server and is not disabled or locked out."
+                break
+            }
+            'Error Locating Server/Instance Specified' {
+                $cause = "The named instance could not be located."
+                $hint  = "Verify the instance name in 'server'. Named instances need the SQL Server Browser service running and UDP 1434 open."
+                break
+            }
+            'No such host is known|could not be resolved' {
+                $cause = "The server name does not resolve in DNS."
+                $hint  = "Check the 'server' value in profile '$SqlProfile' for typos, and that you are on a network that can resolve it (e.g. VPN connected)."
+                break
+            }
+            'network-related or instance-specific error|server was not found or was not accessible|Named Pipes Provider' {
+                $cause = "The server could not be reached — wrong name, not running, or blocked by a firewall."
+                $hint  = "Verify 'server' in profile '$SqlProfile', that the SQL Server service is running, and that TCP/IP is enabled for the instance."
+                break
+            }
+            'Timeout expired|timeout period elapsed|Connection Timeout Expired' {
+                $cause = "The connection attempt timed out after $sqlConnectTimeoutSeconds seconds."
+                $hint  = "The host may be unreachable, overloaded, or dropping packets at a firewall."
+                break
+            }
+            'Access is denied|Access to the path' {
+                $cause = "The operating system denied the connection attempt."
+                $hint  = "If using Windows auth, confirm the account running this script has access to the server."
+                break
+            }
+        }
+    }
+
+    return [pscustomobject]@{ Cause = $cause; Hint = $hint }
+}
+
+function Test-SqlConnection {
+    <#
+        Opens one real connection and runs 'SELECT 1', using the same execution method and
+        credentials the load jobs will use, so a pass here means the jobs can connect too.
+        Returns an object with Success, and on failure Cause/Hint/Raw for reporting.
+    #>
+    # Same reasoning as the script-level suppression: the password is already plain text in
+    # the JSON config, so a SecureString parameter would add ceremony without adding security.
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute(
+        'PSAvoidUsingPlainTextForPassword', '',
+        Justification = 'Password originates from a plain-text JSON config file.'
+    )]
+    param(
+        [string]$Server,
+        [string]$Database,
+        [string]$AuthType,
+        [string]$Username,
+        [string]$Password,
+        [bool]$TrustCertificate,
+        [string]$Method,
+        [int]$TimeoutSeconds
+    )
+
+    if ($Method -eq "Invoke-Sqlcmd") {
+        try {
+            Import-Module SqlServer -ErrorAction Stop
+        } catch {
+            return [pscustomobject]@{
+                Success = $false
+                Cause   = "The SqlServer module is installed but could not be loaded."
+                Hint    = "Run 'Import-Module SqlServer' in a fresh session to see the load error, or reinstall with 'Install-Module SqlServer -Scope CurrentUser -Force'."
+                Raw     = $_.Exception.Message
+            }
+        }
+
+        $probe = @{
+            ServerInstance    = $Server
+            Database          = $Database
+            Query             = "SELECT 1"
+            ConnectionTimeout = $TimeoutSeconds
+            ErrorAction       = "Stop"
+        }
+        if ($AuthType -eq "sql") {
+            $probe.Username = $Username
+            $probe.Password = $Password
+        }
+        if ($TrustCertificate) { $probe.TrustServerCertificate = $true }
+
+        try {
+            $null = Invoke-Sqlcmd @probe
+            return [pscustomobject]@{ Success = $true }
+        } catch {
+            # Walk the exception chain for a SqlException-style error number. Duck-typed on
+            # purpose: the module may surface either System.Data or Microsoft.Data SqlException.
+            $number = $null
+            $ex     = $_.Exception
+            while ($null -ne $ex) {
+                if ($null -ne $ex.PSObject.Properties['Number']) {
+                    $number = $ex.Number
+                    break
+                }
+                $ex = $ex.InnerException
+            }
+
+            $diagnosis = Get-SqlConnectionDiagnosis -Message $_.Exception.Message -Number $number
+            return [pscustomobject]@{
+                Success = $false
+                Cause   = $diagnosis.Cause
+                Hint    = $diagnosis.Hint
+                Raw     = $_.Exception.Message
+            }
+        }
+    }
+
+    # sqlcmd fallback. -b returns a non-zero exit code on error, -l bounds the login wait.
+    $sqlcmdArgs = @('-S', $Server, '-d', $Database, '-Q', 'SELECT 1', '-l', $TimeoutSeconds, '-b')
+    if ($AuthType -eq "sql") {
+        $sqlcmdArgs += @('-U', $Username, '-P', $Password)
+    } else {
+        $sqlcmdArgs += '-E'
+    }
+    if ($TrustCertificate) { $sqlcmdArgs += '-C' }
+
+    $output = & sqlcmd @sqlcmdArgs 2>&1
+    if ($LASTEXITCODE -eq 0) {
+        return [pscustomobject]@{ Success = $true }
+    }
+
+    $text = ($output | Out-String).Trim()
+    if ([string]::IsNullOrWhiteSpace($text)) {
+        $text = "sqlcmd exited with code $LASTEXITCODE but produced no output."
+    }
+
+    # sqlcmd reports errors as "Msg 18456, Level 14, State 1" — recover the number if present.
+    $number = $null
+    if ($text -match 'Msg\s+(\d+)') { $number = [int]$Matches[1] }
+
+    $diagnosis = Get-SqlConnectionDiagnosis -Message $text -Number $number
+    return [pscustomobject]@{
+        Success = $false
+        Cause   = $diagnosis.Cause
+        Hint    = $diagnosis.Hint
+        Raw     = $text
+    }
+}
+
+# ==============================
 # SQL Server setup
 # ==============================
 
@@ -280,6 +523,12 @@ No SQL Server execution method found. Install one of the following:
             exit 1
         }
         $serverString = "$($conn.server.Trim()),$portNum"
+
+        # A named instance plus an explicit port is contradictory: the port wins and the
+        # instance name is ignored, so you can silently reach a different instance.
+        if ($conn.server -match '\\') {
+            Write-Warning "Profile '$SqlProfile' sets both a named instance ('$($conn.server.Trim())') and a port ($portNum). The port takes precedence and the instance name is ignored — remove one of them to be sure which instance you reach."
+        }
     } else {
         $serverString = $conn.server.Trim()
     }
@@ -348,6 +597,56 @@ No SQL Server execution method found. Install one of the following:
         Write-Error "Profile '$SqlProfile' has unknown auth type '$($conn.auth)'. Expected 'windows' or 'sql'."
         exit 1
     }
+
+    # Prove the connection works before generating any load. Without this, a bad profile
+    # produces one failed job per execution instead of a single actionable error.
+    $authLabel = if ($authType -eq "sql") {
+        "SQL auth as '$($conn.username)'"
+    } else {
+        "Windows auth as '$([Environment]::UserDomainName)\$([Environment]::UserName)'"
+    }
+
+    Write-Host "Testing connection to [$serverString] database [$($conn.database)] ($authLabel)..." -ForegroundColor Cyan
+
+    $testArgs = @{
+        Server           = $serverString
+        Database         = $conn.database
+        AuthType         = $authType
+        TrustCertificate = $trustCertificate
+        Method           = $sqlMethod
+        TimeoutSeconds   = $sqlConnectTimeoutSeconds
+    }
+    if ($authType -eq "sql") {
+        $testArgs.Username = $conn.username
+        $testArgs.Password = $conn.password
+    }
+
+    $connectionTest = Test-SqlConnection @testArgs
+
+    if (-not $connectionTest.Success) {
+        $report = @(
+            "Cannot connect to SQL Server. Aborting before any load was generated."
+            ""
+            "  Profile:  $SqlProfile (from $ConfigPath)"
+            "  Server:   $serverString"
+            "  Database: $($conn.database)"
+            "  Auth:     $authLabel"
+            "  Method:   $sqlMethod"
+            ""
+        )
+        if ($connectionTest.Cause) {
+            $report += "  Cause:    $($connectionTest.Cause)"
+            if ($connectionTest.Hint) { $report += "  Fix:      $($connectionTest.Hint)" }
+            $report += ""
+        }
+        $report += "  Reported by ${sqlMethod}:"
+        $report += ($connectionTest.Raw -split "`r?`n" | ForEach-Object { "    $_" })
+
+        Write-Error ($report -join "`n")
+        exit 1
+    }
+
+    Write-Host "Connection OK." -ForegroundColor Green
 }
 
 # ==============================

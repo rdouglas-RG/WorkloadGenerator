@@ -1,0 +1,7 @@
+# Local SQL Server connection profiles — contains plain-text passwords.
+# Copy run-parallel-config.example.json to run-parallel-config.json and edit that.
+run-parallel-config.json
+
+# Any alternative config passed via -ConfigPath
+*-config.json
+!run-parallel-config.example.json
